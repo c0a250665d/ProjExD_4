@@ -141,14 +141,15 @@ class Beam(pg.sprite.Sprite):
     """
     ビームに関するクラス
     """
-    def __init__(self, bird: Bird):
+    def __init__(self, bird: Bird, angle0: float = 0):
         """
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん
+        引数 angle0：回転角度のオフセット（デフォルト0）
         """
         super().__init__()
         self.vx, self.vy = bird.dire
-        angle = math.degrees(math.atan2(-self.vy, self.vx))
+        angle = math.degrees(math.atan2(-self.vy, self.vx)) + angle0
         self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
         self.vx = math.cos(math.radians(angle))
         self.vy = -math.sin(math.radians(angle))
@@ -165,6 +166,70 @@ class Beam(pg.sprite.Sprite):
         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
         if check_bound(self.rect) != (True, True):
             self.kill()
+
+
+class NeoBeam:
+    """
+    弾幕ビームに関するクラス
+    """
+    def __init__(self, bird: Bird, num: int):
+        """
+        弾幕ビームを生成する
+        引数 bird：ビームを放つこうかとん
+        引数 num：ビーム数
+        """
+        self.bird = bird
+        self.num = num
+
+    def gen_beams(self):
+        """
+        -50°～+51°の角度の範囲で指定ビーム数の分だけBeamインスタンスを生成し、リストにappendする
+        戻り値：Beamインスタンスのリスト
+        """
+        beams = []
+        if self.num == 1:
+            beams.append(Beam(self.bird))
+        else:
+            step = 101 // (self.num - 1)
+            for angle_offset in range(-50, 51, step):
+                beams.append(Beam(self.bird, angle_offset))
+        return beams
+
+
+class Shield(pg.sprite.Sprite):
+    """
+    防御壁に関するクラス
+    """
+    def __init__(self, bird: Bird, life: int):
+        super().__init__()
+        self.bird = bird
+        self.life = life
+        self.w, self.h = 20, bird.rect.height * 2
+        image = pg.Surface((self.w, self.h), pg.SRCALPHA)
+        pg.draw.rect(image, (0, 0, 255), (0, 0, self.w, self.h))
+        self.orig_image = image
+        self.update_image()
+
+    def update_image(self):
+        vx, vy = self.bird.dire
+        angle = math.degrees(math.atan2(-vy, vx))
+        self.image = pg.transform.rotate(self.orig_image, angle)
+        self.rect = self.image.get_rect(center=self._calc_center())
+
+    def _calc_center(self):
+        vx, vy = self.bird.dire
+        offset = self.bird.rect.width
+        return (
+            self.bird.rect.centerx + offset * vx,
+            self.bird.rect.centery + offset * vy,
+        )
+
+    def update(self):
+        self.life -= 1
+        if self.life < 0:
+            self.kill()
+            return
+        self.update_image()
 
 
 class Explosion(pg.sprite.Sprite):
@@ -269,6 +334,7 @@ def main():
     bird = Bird(3, (900, 400))
     bombs = pg.sprite.Group()
     beams = pg.sprite.Group()
+    shields = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
     gravities = pg.sprite.Group()
@@ -287,6 +353,10 @@ def main():
                     gravities.add(Gravity(400))
                     score.value -= 10
             
+                if event.key == pg.K_s:
+                    if score.value > 50 and len(shields) == 0:
+                        shields.add(Shield(bird, 400))
+                        score.value -= 50
         screen.blit(bg_img, [0, 0])
 
         if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
@@ -322,9 +392,14 @@ def main():
             exps.add(Explosion(emy, 100))
             score.value += 10
 
+        for bomb in pg.sprite.groupcollide(bombs, shields, True, False).keys():
+            exps.add(Explosion(bomb, 50))
+
         bird.update(key_lst, screen)
         beams.update()
         beams.draw(screen)
+        shields.update()
+        shields.draw(screen)
         emys.update()
         emys.draw(screen)
         bombs.update()
