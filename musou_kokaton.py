@@ -5,7 +5,6 @@ import sys
 import time
 import pygame as pg
 
-
 WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -54,7 +53,6 @@ class Bird(pg.sprite.Sprite):
         引数1 num：こうかとん画像ファイル名の番号
         引数2 xy：こうかとん画像の位置座標タプル
         """
-
         self.state = "normal" #こうかとんの状態
         self.hyper_life = 0 #無敵時間の残りフレーム数
 
@@ -112,6 +110,29 @@ class Bird(pg.sprite.Sprite):
             if self.hyper_life <= 0:    
                 self.state = "normal"                       #こうかとんの状態をnormalに戻す
         screen.blit(self.image, self.rect)
+
+
+class Life(pg.sprite.Sprite):
+    """
+    こうかとんの残機に関するクラス
+    """
+    def __init__(self, num: int):
+        super().__init__()
+        self.num = num
+        self.image = pg.Surface((40, 40))
+        self.image.set_colorkey((0, 0, 0))
+        points = [(
+            16*math.sin(t/100)**3 + 20,
+            -(13*math.cos(t/100) - 5*math.cos(2*t/100) - 2*math.cos(3*t/100) - math.cos(4*t/100)) + 20
+        ) for t in range(0, 628)]
+        pg.draw.polygon(self.image, (255, 0, 0), points)
+        
+    def update(self, screen: pg.Surface):
+        """
+        残機数を画面右下に描画する
+        """
+        for i in range(self.num):
+            screen.blit(self.image, (WIDTH - 50 - i*40, HEIGHT - 50))
 
 
 class Bomb(pg.sprite.Sprite):
@@ -178,35 +199,6 @@ class Beam(pg.sprite.Sprite):
         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
         if check_bound(self.rect) != (True, True):
             self.kill()
-
-
-class NeoBeam:
-    """
-    弾幕ビームに関するクラス
-    """
-    def __init__(self, bird: Bird, num: int):
-        """
-        弾幕ビームを生成する
-        引数 bird：ビームを放つこうかとん
-        引数 num：ビーム数
-        """
-        self.bird = bird
-        self.num = num
-
-    def gen_beams(self):
-        """
-        -50°～+51°の角度の範囲で指定ビーム数の分だけBeamインスタンスを生成し、リストにappendする
-        戻り値：Beamインスタンスのリスト
-        """
-        beams = []
-        if self.num == 1:
-            beams.append(Beam(self.bird))
-        else:
-            step = 101 // (self.num - 1)
-            for angle_offset in range(-50, 51, step):
-                beams.append(Beam(self.bird, angle_offset))
-        return beams
-
 
 class Shield(pg.sprite.Sprite):
     """
@@ -342,6 +334,7 @@ def main():
     screen = pg.display.set_mode((WIDTH, HEIGHT))
     bg_img = pg.image.load(f"fig/pg_bg.jpg")
     score = Score()
+    life = Life(3)
 
     bird = Bird(3, (900, 400))
     bombs = pg.sprite.Group()
@@ -361,20 +354,21 @@ def main():
             if event.type == pg.KEYDOWN:
                 if event.key == pg.K_SPACE:
                     beams.add(Beam(bird))
-                if event.key == pg.K_RETURN and score.value >= 10: # 重力場発動条件
+                if event.key == pg.K_RETURN and score.value >= 200: # 重力場発動条件
                     gravities.add(Gravity(400))
-                    score.value -= 10
+                    score.value -= 200
             
                 if event.key == pg.K_s:
-                    if score.value > 50 and len(shields) >= 10:
+                    # 修正: 盾が存在しない場合（0個）のみ発動できるようにし、消費スコアも条件に合わせて50に変更
+                    if score.value > 50 and len(shields) == 0:
                         shields.add(Shield(bird, 400))
-                        score.value -= 10
+                        score.value -= 50
 
                 # 右シフトキーの判定
-                if event.key == pg.K_RSHIFT and score.value >= 10:
+                if event.key == pg.K_RSHIFT and score.value >= 100:
                     bird.state = "hyper"
                     bird.hyper_life = 500
-                    score.value -= 10
+                    score.value -= 100
                 
 
         screen.blit(bg_img, [0, 0])
@@ -400,13 +394,15 @@ def main():
             if bird.state == "hyper":
                 exps.add(Explosion(bomb, 50))  # 爆発エフェクト
                 score.value += 1  # 1点アップ
-            
             else:
+                life.num -= 1
                 bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+                life.update(screen)
                 score.update(screen)
                 pg.display.update()
-                time.sleep(2)
-                #return
+                if life.num <= 0:
+                    time.sleep(1)
+                    return  # 修正: ゲームオーバー時にループを終了させるためにコメントアウトを解除
             
         gravities.update() # 重力場
         for bomb in pg.sprite.groupcollide(bombs, gravities, True, False): #重力場衝突判定
@@ -417,9 +413,10 @@ def main():
             exps.add(Explosion(emy, 100))
             score.value += 10
             
-
+        # 修正: 盾と爆弾の衝突処理のコメントアウトを解除
         for bomb in pg.sprite.groupcollide(bombs, shields, True, False).keys():
             exps.add(Explosion(bomb, 50))
+            
 
         bird.update(key_lst, screen)
         beams.update()
@@ -433,6 +430,7 @@ def main():
         exps.update()
         exps.draw(screen)
         gravities.draw(screen) # 重力場描画
+        life.update(screen)
         score.update(screen)
         pg.display.update()
         tmr += 1
