@@ -316,8 +316,6 @@ def main():
         bird.update(key_lst, screen)
         beams.update()
         beams.draw(screen)
-        shields.update()
-        shields.draw(screen)
         emys.update()
         emys.draw(screen)
         bombs.update()
