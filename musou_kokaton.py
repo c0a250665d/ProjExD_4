@@ -242,6 +242,24 @@ class Score:
         screen.blit(self.image, self.rect)
 
 
+class Gravity(pg.sprite.Sprite):
+    """
+    画面全体を覆う重力場を発生させるクラス
+    """
+    def __init__(self, life):
+        super().__init__()
+        self.life = life
+        self.image = pg.Surface((1100, 650))
+        pg.draw.rect(self.image, (0,0,0), (0, 0, 1100, 650))
+        self.image.set_alpha(64)
+        self.rect = self.image.get_rect()
+
+    def update(self,):
+        self.life -= 1
+        if self.life < 0:
+            self.kill()
+
+
 def main():
     pg.display.set_caption("真！こうかとん無双")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
@@ -253,6 +271,7 @@ def main():
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
+    gravities = pg.sprite.Group()
 
     tmr = 0
     clock = pg.time.Clock()
@@ -261,8 +280,13 @@ def main():
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return 0
-            if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                beams.add(Beam(bird))
+            if event.type == pg.KEYDOWN:
+                if event.key == pg.K_SPACE:
+                    beams.add(Beam(bird))
+                if event.key == pg.K_RETURN and score.value >= 10: # 重力場発動条件
+                    gravities.add(Gravity(400))
+                    score.value -= 10
+            
         screen.blit(bg_img, [0, 0])
 
         if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
@@ -288,6 +312,15 @@ def main():
             pg.display.update()
             time.sleep(2)
             return
+        
+        gravities.update() # 重力場
+        for bomb in pg.sprite.groupcollide(bombs, gravities, True, False): #重力場衝突判定
+            exps.add(Explosion(bomb, 50))
+            score.value += 1
+        
+        for emy in pg.sprite.groupcollide(emys, gravities, True, False):
+            exps.add(Explosion(emy, 100))
+            score.value += 10
 
         bird.update(key_lst, screen)
         beams.update()
@@ -298,6 +331,7 @@ def main():
         bombs.draw(screen)
         exps.update()
         exps.draw(screen)
+        gravities.draw(screen) # 重力場描画
         score.update(screen)
         pg.display.update()
         tmr += 1
